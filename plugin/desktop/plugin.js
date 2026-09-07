@@ -31,7 +31,7 @@ function CortexHome({ ctx }) {
     children: [
       jsx("div", {
         className: "font-medium",
-        children: "Cortex — workspace plugin",
+        children: "Cortex — workspace plugin (lifeOS)",
       }),
       jsx("div", {
         className: "text-(--ui-text-tertiary)",

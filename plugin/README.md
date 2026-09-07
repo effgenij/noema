@@ -21,3 +21,8 @@ ln -s ~/dev/personal/cortex/plugin ~/.hermes/plugins/cortex
 
 - `hermes plugins list` — cortex в статусе `enabled`.
 - Health: `curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:PORT/api/plugins/cortex/health` → `{"status":"ok","plugin":"cortex"}`. Токен — `HERMES_DASHBOARD_SESSION_TOKEN` из env gateway-процесса.
+
+## Нюансы живой перезагрузки
+
+- После правки `desktop/plugin.js` изменение может не появиться сразу (нестабильный fs-watch для unified-плагина через симлинк) — remedy: ⌘K → **Reload desktop plugins**, либо переключение gateway.
+- Клик по странице может «ничего не делать», если воркспейс припаркован на сессионном тайле (известный кейс #72602) — remedy тот же: ⌘K Reload / переключение gateway.
