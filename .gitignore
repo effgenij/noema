@@ -1,4 +1,10 @@
-__pycache__/
-*.pyc
+node_modules/
+dist/
+.build/
+.nitro/
+.output/
+.tanstack/
+.env
+*.log
 .DS_Store
-.venv/
+apps/web/src/routeTree.gen.ts
