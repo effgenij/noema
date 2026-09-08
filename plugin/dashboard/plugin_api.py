@@ -1,7 +1,7 @@
 """Cortex backend routes. Mounted by the Hermes gateway at /api/plugins/cortex/.
 
 Loaded as a top-level module by file location, so the plugin root is added to
-sys.path to reach the shared data core (tasks_core).
+sys.path to reach the shared data cores (tasks, notes, habits).
 """
 
 import sqlite3
@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException  # type: ignore[reportMiss
 
 import tasks_core  # type: ignore[reportMissingImports]  # resolves via the sys.path bootstrap above
 import notes_core  # type: ignore[reportMissingImports]  # resolves via the sys.path bootstrap above
+import habits_core  # type: ignore[reportMissingImports]  # resolves via the sys.path bootstrap above
 import cortex_db  # type: ignore[reportMissingImports]  # resolves via the sys.path bootstrap above
 from plugin_db import db_path  # type: ignore[reportMissingImports]  # resolves via the sys.path bootstrap above
 
@@ -26,6 +27,7 @@ def get_conn():
     conn = cortex_db.connect(db_path())
     tasks_core.ensure_schema(conn)
     notes_core.ensure_schema(conn)
+    habits_core.ensure_schema(conn)
     try:
         yield conn
     finally:
@@ -144,3 +146,44 @@ def append_note(note_id: str, body: dict, conn: sqlite3.Connection = Depends(get
 def delete_note(note_id: str, conn: sqlite3.Connection = Depends(get_conn)):
     if not notes_core.delete_note(conn, note_id):
         raise HTTPException(status_code=404, detail="note not found")
+
+
+@router.get("/habits")
+def list_habits(conn: sqlite3.Connection = Depends(get_conn)):
+    return habits_core.list_habits(conn)
+
+
+@router.post("/habits", status_code=201)
+def create_habit(body: dict, conn: sqlite3.Connection = Depends(get_conn)):
+    try:
+        return habits_core.create_habit(conn, str(body.get("name") or ""))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/habits/{habit_id}/checkin")
+def check_in(habit_id: str, body: dict, conn: sqlite3.Connection = Depends(get_conn)):
+    if not habits_core.habit_exists(conn, habit_id):
+        raise HTTPException(status_code=404, detail="habit not found")
+    try:
+        habits_core.check_in(conn, habit_id, day=body.get("day"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return habits_core.list_habits(conn)
+
+
+@router.post("/habits/{habit_id}/uncheck")
+def uncheck(habit_id: str, body: dict, conn: sqlite3.Connection = Depends(get_conn)):
+    if not habits_core.habit_exists(conn, habit_id):
+        raise HTTPException(status_code=404, detail="habit not found")
+    try:
+        habits_core.uncheck(conn, habit_id, day=body.get("day"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return habits_core.list_habits(conn)
+
+
+@router.delete("/habits/{habit_id}", status_code=204)
+def delete_habit(habit_id: str, conn: sqlite3.Connection = Depends(get_conn)):
+    if not habits_core.delete_habit(conn, habit_id):
+        raise HTTPException(status_code=404, detail="habit not found")

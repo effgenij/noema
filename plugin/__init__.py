@@ -1,7 +1,8 @@
-"""Cortex — Hermes plugin (agent half): task CRUD tools for the chat agent.
+"""Cortex — Hermes plugin (agent half): task/note/habit tools for the chat agent.
 
-The data core (tasks_core) is pure stdlib; this module is a thin adapter that
-resolves the DB path under the Hermes home and exposes CRUD as agent tools.
+The data cores (tasks_core, notes_core, habits_core) are pure stdlib; this module
+is a thin adapter that resolves the DB path under the Hermes home and exposes
+CRUD as agent tools.
 """
 
 import json
@@ -14,6 +15,7 @@ if str(_PLUGIN_ROOT) not in sys.path:
 
 import tasks_core  # type: ignore[reportMissingImports]  # resolves via the sys.path bootstrap above
 import notes_core  # type: ignore[reportMissingImports]  # resolves via the sys.path bootstrap above
+import habits_core  # type: ignore[reportMissingImports]  # resolves via the sys.path bootstrap above
 from plugin_db import db_path  # type: ignore[reportMissingImports]  # resolves via the sys.path bootstrap above
 from tools.registry import tool_error, tool_result  # type: ignore[reportMissingImports]  # runtime: gateway process
 
@@ -292,6 +294,120 @@ def _handle_note_delete(args: dict, **kw) -> str:
     return tool_result({"deleted": args.get("id")})
 
 
+HABITS_CREATE_SCHEMA = {
+    "name": "habits_create",
+    "description": "Create a habit to track daily.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string", "description": "Habit name."},
+        },
+        "required": ["name"],
+    },
+}
+
+HABITS_LIST_SCHEMA = {
+    "name": "habits_list",
+    "description": "List habits with their current streak and 14-day sparkline.",
+    "parameters": {"type": "object", "properties": {}},
+}
+
+HABITS_CHECKIN_SCHEMA = {
+    "name": "habits_checkin",
+    "description": "Record a daily check-in for a habit (default: today).",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string", "description": "Habit id (from habits_list)."},
+            "day": {"type": "string", "description": "Optional day, YYYY-MM-DD (default today)."},
+        },
+        "required": ["id"],
+    },
+}
+
+HABITS_UNCHECK_SCHEMA = {
+    "name": "habits_uncheck",
+    "description": "Remove a daily check-in (e.g. a mistake).",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string", "description": "Habit id (from habits_list)."},
+            "day": {"type": "string", "description": "Optional day, YYYY-MM-DD (default today)."},
+        },
+        "required": ["id"],
+    },
+}
+
+HABITS_DELETE_SCHEMA = {
+    "name": "habits_delete",
+    "description": "Delete a habit.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string", "description": "Habit id (from habits_list)."},
+        },
+        "required": ["id"],
+    },
+}
+
+
+def _handle_habit_create(args: dict, **kw) -> str:
+    conn = habits_core.connect(db_path())
+    try:
+        habit = habits_core.create_habit(conn, args.get("name", ""))
+    except ValueError as exc:
+        return tool_error(str(exc))
+    finally:
+        conn.close()
+    return tool_result({"id": habit["id"], "name": habit["name"]})
+
+
+def _handle_habit_list(args: dict, **kw) -> str:
+    conn = habits_core.connect(db_path())
+    try:
+        habits = habits_core.list_habits(conn)
+    finally:
+        conn.close()
+    return tool_result({"habits": habits})
+
+
+def _handle_habit_checkin(args: dict, **kw) -> str:
+    conn = habits_core.connect(db_path())
+    try:
+        if not habits_core.habit_exists(conn, args.get("id", "")):
+            return tool_error("habit not found")
+        habits_core.check_in(conn, args.get("id", ""), day=args.get("day"))
+    except ValueError as exc:
+        return tool_error(str(exc))
+    finally:
+        conn.close()
+    return tool_result({"checked": args.get("id"), "day": args.get("day") or "today"})
+
+
+def _handle_habit_uncheck(args: dict, **kw) -> str:
+    conn = habits_core.connect(db_path())
+    try:
+        if not habits_core.habit_exists(conn, args.get("id", "")):
+            return tool_error("habit not found")
+        habits_core.uncheck(conn, args.get("id", ""), day=args.get("day"))
+    except ValueError as exc:
+        return tool_error(str(exc))
+    finally:
+        conn.close()
+    return tool_result({"unchecked": args.get("id"), "day": args.get("day") or "today"})
+
+
+def _handle_habit_delete(args: dict, **kw) -> str:
+    conn = habits_core.connect(db_path())
+    try:
+        deleted = habits_core.delete_habit(conn, args.get("id", ""))
+    finally:
+        conn.close()
+    if not deleted:
+        return tool_error("habit not found")
+    return tool_result({"deleted": args.get("id")})
+
+
 _TOOLS = (
     ("tasks_create", CREATE_SCHEMA, _handle_create, "➕"),
     ("tasks_list", LIST_SCHEMA, _handle_list, "📋"),
@@ -303,6 +419,11 @@ _TOOLS = (
     ("notes_update", NOTES_UPDATE_SCHEMA, _handle_note_update, "🔧"),
     ("notes_append", NOTES_APPEND_SCHEMA, _handle_note_append, "📎"),
     ("notes_delete", NOTES_DELETE_SCHEMA, _handle_note_delete, "🚮"),
+    ("habits_create", HABITS_CREATE_SCHEMA, _handle_habit_create, "🌱"),
+    ("habits_list", HABITS_LIST_SCHEMA, _handle_habit_list, "📊"),
+    ("habits_checkin", HABITS_CHECKIN_SCHEMA, _handle_habit_checkin, "✅"),
+    ("habits_uncheck", HABITS_UNCHECK_SCHEMA, _handle_habit_uncheck, "↩️"),
+    ("habits_delete", HABITS_DELETE_SCHEMA, _handle_habit_delete, "❌"),
 )
 
 

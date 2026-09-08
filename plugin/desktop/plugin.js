@@ -356,6 +356,138 @@ function CortexNotes({ ctx }) {
   });
 }
 
+function Sparkline({ data }) {
+  const w = 56;
+  const h = 16;
+  const bw = 3;
+  const gap = 1;
+  return jsx("svg", {
+    width: w,
+    height: h,
+    children: data.map((v, i) =>
+      jsx(
+        "rect",
+        {
+          x: i * (bw + gap),
+          y: v ? 0 : h - 2,
+          width: bw,
+          height: v ? h : 2,
+          fill: v ? "var(--ui-accent)" : "var(--ui-stroke-secondary)",
+        },
+        i,
+      ),
+    ),
+  });
+}
+
+function CortexHabits({ ctx }) {
+  const [name, setName] = useState("");
+  const habits = useQuery({
+    queryKey: ["cortex", "habits"],
+    queryFn: () => ctx.rest("/habits"),
+    refetchInterval: 3000,
+  });
+
+  const list = habits.data ?? [];
+  const refresh = () => habits.refetch();
+  const checkedToday = (h) => h.sparkline[h.sparkline.length - 1] === 1;
+
+  const create = async () => {
+    const value = name.trim();
+    if (!value) return;
+    setName("");
+    await ctx.rest("/habits", { method: "POST", body: { name: value } });
+    refresh();
+  };
+
+  const toggle = async (h) => {
+    const action = checkedToday(h) ? "uncheck" : "checkin";
+    await ctx.rest(`/habits/${h.id}/${action}`, { method: "POST", body: {} });
+    refresh();
+  };
+
+  const remove = async (h) => {
+    await ctx.rest(`/habits/${h.id}`, { method: "DELETE" });
+    refresh();
+  };
+
+  return jsxs("div", {
+    className: "flex h-full flex-col gap-3 p-3 text-sm",
+    children: [
+      jsx("div", { className: "font-medium", children: "Cortex — Habits" }),
+      jsxs("div", {
+        className: "flex gap-2",
+        children: [
+          jsx("input", {
+            className:
+              "min-w-0 flex-1 rounded border border-(--ui-stroke-secondary) bg-transparent px-2 py-1",
+            placeholder: "New habit…",
+            value: name,
+            onChange: (e) => setName(e.target.value),
+            onKeyDown: (e) => {
+              if (e.key === "Enter") create();
+            },
+          }),
+          jsx("button", {
+            type: "button",
+            className:
+              "rounded bg-(--ui-accent) px-3 py-1 font-medium text-(--ui-base) hover:opacity-90",
+            onClick: create,
+            children: "Add",
+          }),
+        ],
+      }),
+      habits.isError
+        ? jsx("div", {
+            className: "text-(--ui-text-tertiary)",
+            children: "habits: unreachable",
+          })
+        : jsxs("div", {
+            className: "flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto",
+            children: list.map((h) =>
+              jsxs(
+                "div",
+                {
+                  className:
+                    "flex items-center gap-3 rounded-md border border-(--ui-stroke-secondary) bg-(--ui-bg) p-2",
+                  children: [
+                    jsx("button", {
+                      type: "button",
+                      className: `flex h-6 w-6 shrink-0 items-center justify-center rounded border text-xs ${
+                        checkedToday(h)
+                          ? "border-transparent bg-(--ui-accent) text-(--ui-base)"
+                          : "border-(--ui-stroke-secondary) hover:bg-(--chrome-action-hover)"
+                      }`,
+                      onClick: () => toggle(h),
+                      children: checkedToday(h) ? "✓" : "",
+                    }),
+                    jsx("div", {
+                      className: "min-w-0 flex-1 truncate",
+                      children: h.name,
+                    }),
+                    jsx("div", {
+                      className:
+                        "shrink-0 text-xs tabular-nums text-(--ui-text-tertiary)",
+                      children: `${h.streak}d`,
+                    }),
+                    jsx(Sparkline, { data: h.sparkline }),
+                    jsx("button", {
+                      type: "button",
+                      className:
+                        "shrink-0 rounded px-1 text-xs text-(--ui-text-tertiary) hover:bg-(--chrome-action-hover) hover:text-foreground",
+                      onClick: () => remove(h),
+                      children: "✕",
+                    }),
+                  ],
+                },
+                h.id,
+              ),
+            ),
+          }),
+    ],
+  });
+}
+
 export default {
   id: "cortex", // must match the folder name
   name: "Cortex",
@@ -374,6 +506,12 @@ export default {
         render: () => jsx(CortexNotes, { ctx }),
       },
       {
+        id: "habits",
+        area: ROUTES_AREA,
+        data: { path: "/cortex/habits" },
+        render: () => jsx(CortexHabits, { ctx }),
+      },
+      {
         id: "nav",
         area: SIDEBAR_NAV_AREA,
         data: { path: "/cortex", label: "Cortex", codicon: "home" },
@@ -382,6 +520,11 @@ export default {
         id: "nav-notes",
         area: SIDEBAR_NAV_AREA,
         data: { path: "/cortex/notes", label: "Notes", codicon: "note" },
+      },
+      {
+        id: "nav-habits",
+        area: SIDEBAR_NAV_AREA,
+        data: { path: "/cortex/habits", label: "Habits", codicon: "flame" },
       },
     ]);
   },
