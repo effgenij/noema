@@ -6,13 +6,9 @@
  * Tasks kanban: 3 columns, add form, status change, delete.
  * UI updates via polling (refetchInterval 3s) — no event API (T2 research).
  */
-import {
-  useQuery,
-  ROUTES_AREA,
-  SIDEBAR_NAV_AREA,
-} from "@hermes/plugin-sdk";
+import { useQuery, ROUTES_AREA, SIDEBAR_NAV_AREA } from "@hermes/plugin-sdk";
 import { jsx, jsxs } from "react/jsx-runtime";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const COLUMNS = [
   { status: "todo", label: "Todo" },
@@ -159,6 +155,207 @@ function CortexTasks({ ctx }) {
   });
 }
 
+function CortexNotes({ ctx }) {
+  const [selectedId, setSelectedId] = useState(null);
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftText, setDraftText] = useState("");
+  const [draftFolder, setDraftFolder] = useState("");
+  const notes = useQuery({
+    queryKey: ["cortex", "notes"],
+    queryFn: () => ctx.rest("/notes"),
+    refetchInterval: 3000,
+  });
+  const folders = useQuery({
+    queryKey: ["cortex", "notes-folders"],
+    queryFn: () => ctx.rest("/notes/folders"),
+    refetchInterval: 3000,
+  });
+
+  const list = notes.data ?? [];
+  const folderList = folders.data ?? [];
+  const selected = list.find((n) => n.id === selectedId) ?? null;
+
+  const bodyOf = (n) => {
+    try {
+      return JSON.parse(n.content).text ?? "";
+    } catch {
+      return n.content ?? "";
+    }
+  };
+
+  // Live-sync the open editor when the selected note changes on the server
+  // (agent append via polling): re-sync drafts whenever id or updated_at moves.
+  useEffect(() => {
+    if (selected) {
+      setDraftTitle(selected.title);
+      setDraftText(bodyOf(selected));
+      setDraftFolder(selected.folder ?? "");
+    }
+  }, [selected?.id, selected?.updated_at]);
+
+  const refresh = () => {
+    notes.refetch();
+    folders.refetch();
+  };
+
+  const select = (n) => {
+    setSelectedId(n.id);
+    setDraftTitle(n.title);
+    setDraftText(bodyOf(n));
+    setDraftFolder(n.folder ?? "");
+  };
+
+  const create = async () => {
+    const note = await ctx.rest("/notes", {
+      method: "POST",
+      body: { title: "Untitled" },
+    });
+    refresh();
+    select(note);
+  };
+
+  const save = async () => {
+    if (!selected) return;
+    if (!draftTitle.trim()) return;
+    await ctx.rest(`/notes/${selected.id}`, {
+      method: "PATCH",
+      body: { title: draftTitle, text: draftText, folder: draftFolder },
+    });
+    refresh();
+  };
+
+  const remove = async () => {
+    if (!selected) return;
+    await ctx.rest(`/notes/${selected.id}`, { method: "DELETE" });
+    setSelectedId(null);
+    refresh();
+  };
+
+  const itemCls = (active) =>
+    `rounded px-2 py-1 text-left text-sm ${
+      active
+        ? "bg-(--ui-control-active-background) text-foreground"
+        : "text-(--ui-text-secondary) hover:bg-(--chrome-action-hover)"
+    }`;
+
+  const rootNotes = list.filter((n) => !n.folder);
+  const tree = folderList.map((f) => ({
+    folder: f,
+    notes: list.filter((n) => n.folder === f),
+  }));
+
+  return jsxs("div", {
+    className: "flex h-full gap-3 p-3 text-sm",
+    children: [
+      jsxs("div", {
+        className:
+          "flex w-56 min-w-0 flex-col gap-1 overflow-y-auto rounded-md bg-(--ui-bg-secondary) p-2",
+        children: [
+          jsx("div", { className: "font-medium", children: "Notes" }),
+          jsx("button", {
+            type: "button",
+            className:
+              "rounded bg-(--ui-accent) px-2 py-1 text-left text-sm font-medium text-(--ui-base) hover:opacity-90",
+            onClick: create,
+            children: "+ New note",
+          }),
+          rootNotes.map((n) =>
+            jsx(
+              "button",
+              {
+                type: "button",
+                className: itemCls(n.id === selectedId),
+                onClick: () => select(n),
+                children: n.title,
+              },
+              n.id,
+            ),
+          ),
+          tree.map((g) =>
+            jsxs(
+              "div",
+              {
+                className: "flex flex-col gap-1",
+                children: [
+                  jsx("div", {
+                    className:
+                      "px-2 pt-2 text-xs font-medium uppercase tracking-wide text-(--ui-text-tertiary)",
+                    children: g.folder,
+                  }),
+                  g.notes.map((n) =>
+                    jsx(
+                      "button",
+                      {
+                        type: "button",
+                        className: itemCls(n.id === selectedId),
+                        onClick: () => select(n),
+                        children: n.title,
+                      },
+                      n.id,
+                    ),
+                  ),
+                ],
+              },
+              g.folder,
+            ),
+          ),
+        ],
+      }),
+      selected
+        ? jsxs("div", {
+            className: "flex min-w-0 flex-1 flex-col gap-2",
+            children: [
+              jsx("input", {
+                className:
+                  "rounded border border-(--ui-stroke-secondary) bg-transparent px-2 py-1 font-medium",
+                value: draftTitle,
+                onChange: (e) => setDraftTitle(e.target.value),
+                placeholder: "Title",
+              }),
+              jsx("input", {
+                className:
+                  "rounded border border-(--ui-stroke-secondary) bg-transparent px-2 py-1 text-xs",
+                value: draftFolder,
+                onChange: (e) => setDraftFolder(e.target.value),
+                placeholder: "Folder",
+              }),
+              jsx("textarea", {
+                className:
+                  "min-h-0 flex-1 resize-none rounded border border-(--ui-stroke-secondary) bg-transparent px-2 py-1",
+                value: draftText,
+                onChange: (e) => setDraftText(e.target.value),
+                placeholder: "Note body…",
+              }),
+              jsxs("div", {
+                className: "flex gap-2",
+                children: [
+                  jsx("button", {
+                    type: "button",
+                    className:
+                      "rounded bg-(--ui-accent) px-3 py-1 font-medium text-(--ui-base) hover:opacity-90",
+                    onClick: save,
+                    children: "Save",
+                  }),
+                  jsx("button", {
+                    type: "button",
+                    className:
+                      "rounded px-3 py-1 text-(--ui-text-tertiary) hover:bg-(--chrome-action-hover) hover:text-foreground",
+                    onClick: remove,
+                    children: "Delete",
+                  }),
+                ],
+              }),
+            ],
+          })
+        : jsx("div", {
+            className:
+              "flex flex-1 items-center justify-center text-(--ui-text-tertiary)",
+            children: "Select a note",
+          }),
+    ],
+  });
+}
+
 export default {
   id: "cortex", // must match the folder name
   name: "Cortex",
@@ -171,9 +368,20 @@ export default {
         render: () => jsx(CortexTasks, { ctx }),
       },
       {
+        id: "notes",
+        area: ROUTES_AREA,
+        data: { path: "/cortex/notes" },
+        render: () => jsx(CortexNotes, { ctx }),
+      },
+      {
         id: "nav",
         area: SIDEBAR_NAV_AREA,
         data: { path: "/cortex", label: "Cortex", codicon: "home" },
+      },
+      {
+        id: "nav-notes",
+        area: SIDEBAR_NAV_AREA,
+        data: { path: "/cortex/notes", label: "Notes", codicon: "note" },
       },
     ]);
   },

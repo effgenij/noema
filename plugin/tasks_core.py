@@ -13,14 +13,19 @@ from cortex_db import uuid7  # type: ignore[reportMissingImports]  # resolves vi
 STATUSES = ("todo", "in_progress", "done")
 
 
-def connect(db_path) -> sqlite3.Connection:
-    """Open the tasks database, creating the schema if needed."""
-    conn = _raw_connect(db_path)
+def ensure_schema(conn: sqlite3.Connection) -> None:
+    """Create the tasks table if missing."""
     conn.execute(
         "CREATE TABLE IF NOT EXISTS tasks ("
         "id TEXT PRIMARY KEY, title TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'todo', "
         "due TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
     )
+
+
+def connect(db_path) -> sqlite3.Connection:
+    """Open the tasks database, creating the schema if needed."""
+    conn = _raw_connect(db_path)
+    ensure_schema(conn)
     conn.commit()
     return conn
 
