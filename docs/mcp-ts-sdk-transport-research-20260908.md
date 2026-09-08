@@ -1,6 +1,6 @@
 # MCP TypeScript SDK — transport research (2026-09-08)
 
-Background research for `cortex` transport matrix. Primary sources only: official
+Background research for `noema` transport matrix. Primary sources only: official
 docs at `modelcontextprotocol.io`, the SDK source at
 `github.com/modelcontextprotocol/typescript-sdk`, and the npm registry. Every claim
 is cited with a URL or repo path.
@@ -54,7 +54,7 @@ Sources:
 - `https://registry.npmjs.org/@modelcontextprotocol/client/latest` → `"version": "2.0.0"`, `"engines": {"node": ">=20"}`.
 - SDK README, `main` branch: "**This is the `main` branch — v2 of the SDK** (`@modelcontextprotocol/server`, `@modelcontextprotocol/client`), implementing the 2026-07-28 MCP spec. … **v2 is the stable release line** … v1.x continues to receive bug fixes and security updates for at least 6 months after v2's release." — `https://github.com/modelcontextprotocol/typescript-sdk/blob/main/README.md`
 
-The design doc (`docs/effgenij-cortex-design-20260908-180300.md`) names
+The design doc (`docs/noema-design-20260908-180300.md`) names
 `@modelcontextprotocol/sdk` — that string is the **v1** line. If the intent is "latest
 stable for new work," that is now `@modelcontextprotocol/server@2.0.0`. Recommend
 resolving this explicitly before T1/T4 (see matrix at the end).
@@ -91,13 +91,13 @@ const app = createMcpExpressApp(); // DNS-rebinding protection on by default
 
 **Bearer-token auth in v1:** the SDK ships no static-token helper on the *server* side.
 `requireBearerAuth` is full OAuth (expects a token verifier / introspection, issues a
-`WWW-Authenticate: Bearer` challenge). For a static `CORTEX_MCP_TOKEN` the laziest correct
+`WWW-Authenticate: Bearer` challenge). For a static `NOEMA_MCP_TOKEN` the laziest correct
 thing is a small Express middleware in front of `handleRequest`:
 
 ```ts
 app.all('/mcp', (req, res, next) => {
-  const expected = process.env.CORTEX_MCP_TOKEN;
-  if (!expected) return res.status(503).end('CORTEX_MCP_TOKEN not set');
+  const expected = process.env.NOEMA_MCP_TOKEN;
+  if (!expected) return res.status(503).end('NOEMA_MCP_TOKEN not set');
   const auth = req.headers.authorization;
   if (!auth || auth !== `Bearer ${expected}`) {
     return res.status(401).end('Unauthorized');
@@ -106,7 +106,7 @@ app.all('/mcp', (req, res, next) => {
 });
 ```
 
-(Or a `requireBearerAuth({ verifier: { verifyAccessToken: async t => t === expected ? { token: t, clientId: 'cortex' } : (throw …) } })` if you want the OAuth-shaped challenge.)
+(Or a `requireBearerAuth({ verifier: { verifyAccessToken: async t => t === expected ? { token: t, clientId: 'noema' } : (throw …) } })` if you want the OAuth-shaped challenge.)
 
 ### v2 — `@modelcontextprotocol/server` 2.0.0
 
@@ -132,7 +132,7 @@ Minimal HTTP server (web-standard, token-gated):
 import { createMcpHandler, McpServer, requireBearerAuth } from '@modelcontextprotocol/server';
 
 const handler = createMcpHandler(() => {
-  const server = new McpServer({ name: 'cortex', version: '0.1.0' });
+  const server = new McpServer({ name: 'noema', version: '0.1.0' });
   // server.registerTool(...) inside the factory
   return server;
 });
@@ -140,8 +140,8 @@ const handler = createMcpHandler(() => {
 const gate = requireBearerAuth({
   verifier: {
     verifyAccessToken: async (token) => {
-      if (token !== process.env.CORTEX_MCP_TOKEN) throw new Error('invalid token');
-      return { token, clientId: 'cortex', scopes: [], expiresAt: Infinity }; // expiresAt MUST be set
+      if (token !== process.env.NOEMA_MCP_TOKEN) throw new Error('invalid token');
+      return { token, clientId: 'noema', scopes: [], expiresAt: Infinity }; // expiresAt MUST be set
     }
   },
   requiredScopes: []
@@ -182,7 +182,7 @@ Key v2 semantics (all from `https://ts.sdk.modelcontextprotocol.io/v2/serving/ht
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
-const server = new McpServer({ name: 'cortex', version: '0.1.0' });
+const server = new McpServer({ name: 'noema', version: '0.1.0' });
 // register tools...
 const transport = new StdioServerTransport();
 await server.connect(transport);
@@ -195,7 +195,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 
 const handle = serveStdio(() => {
-  const server = new McpServer({ name: 'cortex', version: '0.1.0' });
+  const server = new McpServer({ name: 'noema', version: '0.1.0' });
   // register tools...
   return server;
 });
@@ -219,7 +219,7 @@ const handle = serveStdio(() => {
   (e.g. `node packages/mcp/dist/stdio.js` or an `npx`-style bin).
 - **Sharing SQLite is orthogonal to the SDK.** Both the web process and the stdio process
   open the same file. No SDK option governs this; the design doc's WAL + `busy_timeout`
-  note is exactly the right mitigation (`docs/effgenij-cortex-design-20260908-180300.md`,
+  note is exactly the right mitigation (`docs/noema-design-20260908-180300.md`,
   transport-matrix fix 2.1). Keep exactly one process "canonical" for the file per the
   design doc's sync premise.
 - **v2 caveat:** `ctx.http` is `undefined` over stdio, so any tool handler that reads
@@ -235,23 +235,23 @@ Common denominator (the `mcpServers` shape clients read):
 ```jsonc
 {
   "mcpServers": {
-    "cortex-stdio": {
+    "noema-stdio": {
       "command": "node",
       "args": ["packages/mcp/dist/stdio.js"],
-      "env": { "CORTEX_DB": "/path/cortex.sqlite" }
+      "env": { "NOEMA_DB": "/path/noema.sqlite" }
     },
-    "cortex-http": {
+    "noema-http": {
       "type": "http",                      // "streamable-http" is an accepted alias
       "url": "https://host.example/mcp",
-      "headers": { "Authorization": "Bearer <CORTEX_MCP_TOKEN>" }
+      "headers": { "Authorization": "Bearer <NOEMA_MCP_TOKEN>" }
     }
   }
 }
 ```
 
 - **Claude Code** (`https://code.claude.com/docs/en/mcp-servers.md`):
-  - HTTP: `claude mcp add --transport http cortex https://host.example/mcp --header "Authorization: Bearer <token>"`.
-  - stdio: `claude mcp add --transport stdio cortex -- node packages/mcp/dist/stdio.js` (everything after `--` is the command).
+  - HTTP: `claude mcp add --transport http noema https://host.example/mcp --header "Authorization: Bearer <token>"`.
+  - stdio: `claude mcp add --transport stdio noema -- node packages/mcp/dist/stdio.js` (everything after `--` is the command).
   - JSON: "the `type` field accepts `streamable-http` as an alias for `http`"; "a JSON entry
     that has a `url` but no `type` is a configuration error, because Claude Code reads an
     entry with no `type` as a stdio server."
@@ -278,7 +278,7 @@ Common denominator (the `mcpServers` shape clients read):
    v1 server imports with v2 middleware packages — pick one line.
 
 2. **Auth middleware is not automatic.** v1: `requireBearerAuth` is OAuth-only; a static
-   `CORTEX_MCP_TOKEN` needs a hand-written middleware (see Q1). v2: the handler "verifies no
+   `NOEMA_MCP_TOKEN` needs a hand-written middleware (see Q1). v2: the handler "verifies no
    token" — the `requireBearerAuth` gate must be mounted in front, and `expiresAt` must be
    set or it 401s
    (`https://ts.sdk.modelcontextprotocol.io/v2/serving/http`,
@@ -301,9 +301,9 @@ Common denominator (the `mcpServers` shape clients read):
    (`https://modelcontextprotocol.io/specification/2025-11-25/basic/transports`; Cursor
    `https://cursor.com/docs/mcp` table: stdio = "Local"). A client (Claude Desktop, Cursor,
    Hermes on a laptop) cannot spawn a process *inside* a remote container, and cannot speak
-   stdio over a network. So a Dockerized `cortex` is reachable **only over HTTP (Streamable
+   stdio over a network. So a Dockerized `noema` is reachable **only over HTTP (Streamable
    HTTP)** — map/publish the MCP HTTP port. stdio works only for bare-metal installs where
-   the agent runs on the same machine as the `cortex` stdio binary.
+   the agent runs on the same machine as the `noema` stdio binary.
 
 5. **DNS-rebinding guard.** v1 `createMcpExpressApp` enables it by default (host `127.0.0.1`);
    v2 framework factories arm Host validation on localhost binds
@@ -329,9 +329,9 @@ doc verbatim matters more than the v1-EOL clock.
 
 | Scenario | Transport | SDK entry point | Auth | Notes |
 |---|---|---|---|---|
-| Docker / VPS deploy (MCP inside web process) | **Streamable HTTP** | v1: `StreamableHTTPServerTransport`; v2: `createMcpHandler` + `toNodeHandler` | `CORTEX_MCP_TOKEN` bearer → **401** (thin middleware in v1, `requireBearerAuth`+`verifyAccessToken` in v2) | single `/mcp` endpoint; `Origin` validation + reverse-proxy TLS |
+| Docker / VPS deploy (MCP inside web process) | **Streamable HTTP** | v1: `StreamableHTTPServerTransport`; v2: `createMcpHandler` + `toNodeHandler` | `NOEMA_MCP_TOKEN` bearer → **401** (thin middleware in v1, `requireBearerAuth`+`verifyAccessToken` in v2) | single `/mcp` endpoint; `Origin` validation + reverse-proxy TLS |
 | Bare-metal, agent on same host (Hermes/Claude/Cursor local) | **stdio** (separate `packages/mcp` binary) | v1: `StdioServerTransport`; v2: `serveStdio` | none (process env) | shares the SQLite file; WAL + `busy_timeout`; log to stderr |
-| Docker + local agent (Hermes on laptop) | **HTTP only** (published port) | same as Docker row | `CORTEX_MCP_TOKEN` bearer | stdio cannot cross the container boundary |
+| Docker + local agent (Hermes on laptop) | **HTTP only** (published port) | same as Docker row | `NOEMA_MCP_TOKEN` bearer | stdio cannot cross the container boundary |
 | Browser-based client (future) | Streamable HTTP | same as Docker row | bearer + **manual permissive CORS** + OPTIONS preflight | keep `Origin` validation for DNS-rebinding |
 
 Key source links:
